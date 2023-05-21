@@ -1,4 +1,4 @@
-package opensearch;
+package io.conduktor.demos.kafka.opensearch;
 
 import com.google.gson.JsonParser;
 import org.apache.http.HttpHost;
@@ -37,7 +37,6 @@ public class OpenSearchConsumer {
 
     public static RestHighLevelClient createOpenSearchClient() {
         String connString = "http://localhost:9200";
-//        String connString = "https://c9p5mwld41:45zeygn9hy@kafka-course-2322630105.eu-west-1.bonsaisearch.net:443";
 
         // we build a URI from the connection string
         RestHighLevelClient restHighLevelClient;
@@ -64,11 +63,10 @@ public class OpenSearchConsumer {
 
 
         }
-
         return restHighLevelClient;
     }
 
-    private static KafkaConsumer<String, String> createKafkaConsumer(){
+    private static KafkaConsumer<String, String> createKafkaConsumer() {
 
         String groupId = "consumer-opensearch-demo";
 
@@ -86,7 +84,7 @@ public class OpenSearchConsumer {
 
     }
 
-    private static String extractId(String json){
+    private static String extractId(String json) {
         // gson library
         return JsonParser.parseString(json)
                 .getAsJsonObject()
@@ -110,27 +108,23 @@ public class OpenSearchConsumer {
         final Thread mainThread = Thread.currentThread();
 
         // adding the shutdown hook
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-            public void run() {
-                log.info("Detected a shutdown, let's exit by calling consumer.wakeup()...");
-                consumer.wakeup();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            log.info("Detected a shutdown, let's exit by calling consumer.wakeup()...");
+            consumer.wakeup();
 
-                // join the main thread to allow the execution of the code in the main thread
-                try {
-                    mainThread.join();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
+            // join the main thread to allow the execution of the code in the main thread
+            try {
+                mainThread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
-        });
+        }));
 
         // we need to create the index on OpenSearch if it doesn't exist already
-
-        try(openSearchClient; consumer){
-
+        try (openSearchClient; consumer) {
             boolean indexExists = openSearchClient.indices().exists(new GetIndexRequest("wikimedia"), RequestOptions.DEFAULT);
 
-            if (!indexExists){
+            if (!indexExists) {
                 CreateIndexRequest createIndexRequest = new CreateIndexRequest("wikimedia");
                 openSearchClient.indices().create(createIndexRequest, RequestOptions.DEFAULT);
                 log.info("The Wikimedia Index has been created!");
@@ -141,9 +135,7 @@ public class OpenSearchConsumer {
             // we subscribe the consumer
             consumer.subscribe(Collections.singleton("wikimedia.recentchange"));
 
-
-            while(true) {
-
+            while (true) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(3000));
 
                 int recordCount = records.count();
@@ -152,15 +144,7 @@ public class OpenSearchConsumer {
                 BulkRequest bulkRequest = new BulkRequest();
 
                 for (ConsumerRecord<String, String> record : records) {
-
-                    // send the record into OpenSearch
-
-                    // strategy 1
-                    // define an ID using Kafka Record coordinates
-//                    String id = record.topic() + "_" + record.partition() + "_" + record.offset();
-
                     try {
-                        // strategy 2
                         // we extract the ID from the JSON value
                         String id = extractId(record.value());
 
@@ -168,19 +152,13 @@ public class OpenSearchConsumer {
                                 .source(record.value(), XContentType.JSON)
                                 .id(id);
 
-//                        IndexResponse response = openSearchClient.index(indexRequest, RequestOptions.DEFAULT);
-
                         bulkRequest.add(indexRequest);
-
-//                        log.info(response.getId());
-                    } catch (Exception e){
+                    } catch (Exception e) {
 
                     }
-
                 }
 
-
-                if (bulkRequest.numberOfActions() > 0){
+                if (bulkRequest.numberOfActions() > 0) {
                     BulkResponse bulkResponse = openSearchClient.bulk(bulkRequest, RequestOptions.DEFAULT);
                     log.info("Inserted " + bulkResponse.getItems().length + " record(s).");
 
@@ -194,13 +172,7 @@ public class OpenSearchConsumer {
                     consumer.commitSync();
                     log.info("Offsets have been committed!");
                 }
-
-
-
-
             }
-
-
         } catch (WakeupException e) {
             log.info("Consumer is starting to shut down");
         } catch (Exception e) {
